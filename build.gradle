@@ -1,0 +1,72 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.0.2'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.home'
+version = '0.0.1-SNAPSHOT'
+description = 'lightBot'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+ext {
+    dotenvVersion = "3.1.0"
+    aiSpringVersion = "1.0.0"
+    telegramVersion = "6.9.7.1"
+    vaultVersion = "3.2.0"
+    httpcomponentsVersion = "5.4.1"
+    postgresVersion = "42.7.8"
+    springBootStarterVersion = "4.0.0"
+    mapstructVersion = "1.6.3"
+    laguageDetectionVersion = "0.6"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // 1. Spring Boot Starters 3.4.2
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation "org.springframework.vault:spring-vault-core"
+    /*implementation "org.springframework.boot:spring-boot-starter-data-jpa"
+    implementation "org.springframework.boot:spring-boot-starter-data-redis"
+    implementation 'org.liquibase:liquibase-core'
+    implementation "org.postgresql:postgresql"*/
+
+    // 2. Utils
+    implementation "org.telegram:telegrambots-spring-boot-starter:$telegramVersion"
+    implementation "io.github.cdimascio:dotenv-java:$dotenvVersion"
+    implementation "org.mapstruct:mapstruct:$mapstructVersion"
+    implementation "org.springframework.vault:spring-vault-core:$vaultVersion"
+    implementation "com.optimaize.languagedetector:language-detector:0.6"
+    implementation 'org.jspecify:jspecify:1.0.0'
+    implementation "io.github.cdimascio:dotenv-java:$dotenvVersion"
+    implementation "org.apache.httpcomponents.client5:httpclient5:$httpcomponentsVersion"
+    implementation "org.apache.httpcomponents.core5:httpcore5-h2:$httpcomponentsVersion"
+
+    // 3. Lombok & Annotation Processors
+    compileOnly "org.projectlombok:lombok"
+    annotationProcessor "org.projectlombok:lombok"
+    annotationProcessor "org.projectlombok:lombok-mapstruct-binding:0.2.0"
+    annotationProcessor "org.mapstruct:mapstruct-processor:$mapstructVersion"
+
+    testImplementation "org.springframework.boot:spring-boot-starter-test"
+}
+
+tasks.named('test') {
+    //useJUnitPlatform()
+    enabled = false
+}
