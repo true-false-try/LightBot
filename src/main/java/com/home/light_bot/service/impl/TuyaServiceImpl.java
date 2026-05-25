@@ -41,7 +41,7 @@ public class TuyaServiceImpl implements TuyaService {
         String t = String.valueOf(System.currentTimeMillis());
         String method = "GET";
 
-        String stringToSign = method + "\n" + contentHash + "\n" + "" + "\n" + path;
+        String stringToSign = method + "\n" + contentHash + "\n" + "\n" + path;
 
         String signSource = clientId + t + stringToSign;
         String sign = calculateHMAC(signSource, clientSecret);
@@ -83,7 +83,7 @@ public class TuyaServiceImpl implements TuyaService {
         String path = "/v1.0/devices/" + deviceId + "/status";
         String t = String.valueOf(System.currentTimeMillis());
 
-        String stringToSign = method + "\n" + contentHash + "\n" + "" + "\n" + path;
+        String stringToSign = method + "\n" + contentHash + "\n" + "\n" + path;
 
         String signSource = clientId + accessToken + t + stringToSign;
 
