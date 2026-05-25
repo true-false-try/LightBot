@@ -1,7 +1,9 @@
 package com.home.light_bot.service.impl;
 
+import com.home.light_bot.dto.ResponseGetCurrentVoltageDto;
 import com.home.light_bot.dto.ResponseGetTokenDto;
 import com.home.light_bot.dto.ResponseTuyaContainerDto;
+import com.home.light_bot.dto.TuyaDeviceStatusResponseDto;
 import com.home.light_bot.service.TuyaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,7 @@ public class TuyaServiceImpl implements TuyaService {
     @Value("${algoritm.hmac}") private String hmac;
     @Value("${tuya.client.secret}") private String clientSecret;
     @Value("${tuya.content_hash}") private String contentHash;
+    @Value("${tuya.device.id}") private String deviceId;
 
     private final RestTemplate restTemplate;
 
@@ -63,7 +66,8 @@ public class TuyaServiceImpl implements TuyaService {
         if (responseBody != null && responseBody.success() && responseBody.result() != null) {
 
             String token = responseBody.result().accessToken();
-            System.out.println("Get token: " + token);
+            log.debug("Get token: {}", token);
+
             return token;
         } else {
             String errorMsg = responseBody != null ? responseBody.msg() : "Empty response";
@@ -71,6 +75,49 @@ public class TuyaServiceImpl implements TuyaService {
         }
     }
 
+    @Override
+    public ResponseGetCurrentVoltageDto getCurrentVoltage() throws Exception {
+        String accessToken = getToken();
+
+        String method = "GET";
+        String path = "/v1.0/devices/" + deviceId + "/status";
+        String t = String.valueOf(System.currentTimeMillis());
+
+        String stringToSign = method + "\n" + contentHash + "\n" + "" + "\n" + path;
+
+        String signSource = clientId + accessToken + t + stringToSign;
+
+        String sign = calculateHMAC(signSource, clientSecret);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("client_id", clientId);
+        headers.add("sign_method", signMethod);
+        headers.add("access_token", accessToken);
+        headers.add("t", t);
+        headers.add("sign", sign);
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<TuyaDeviceStatusResponseDto> responseTuya = restTemplate.exchange(
+                "https://openapi.tuyaeu.com" + path,
+                HttpMethod.GET,
+                entity,
+                TuyaDeviceStatusResponseDto.class
+        );
+
+
+       TuyaDeviceStatusResponseDto tuyaContainerDto = responseTuya.getBody();
+
+       log.debug("CURL headers --> client_id: {}, access_token: {}, sign: {}, t: {}", clientId, accessToken, sign, t);
+
+       return  tuyaContainerDto.result().stream()
+                .filter(field -> "cur_voltage".equals(field.code()))
+                .findFirst()
+                .map(field -> ResponseGetCurrentVoltageDto.builder().currentVoltage(
+                        calculateVoltage((Integer) field.value())
+                ).build())
+                .orElseGet(() -> ResponseGetCurrentVoltageDto.builder().currentVoltage(null).build());
+    }
 
     private String calculateHMAC(String data, String key) throws NoSuchAlgorithmException, InvalidKeyException {
         Mac sha256HMAC = Mac.getInstance(hmac);
@@ -82,4 +129,7 @@ public class TuyaServiceImpl implements TuyaService {
         return result.toString().toUpperCase();
     }
 
+    private Integer calculateVoltage(Integer tuyaVoltage) {
+        return tuyaVoltage / 10;
+    }
 }

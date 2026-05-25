@@ -1,5 +1,6 @@
 package com.home.light_bot.controller;
 
+import com.home.light_bot.dto.ResponseGetCurrentVoltageDto;
 import com.home.light_bot.service.TuyaService;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -9,8 +10,6 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
-
-import java.util.Map;
 
 @Controller
 @RequiredArgsConstructor
@@ -30,11 +29,20 @@ public class TelegramBotController extends TelegramLongPollingBot {
             Message inMessage = update.getMessage();
             String chatId = inMessage.getChatId().toString();
             String userMessage = inMessage.getText();
+
             if (userMessage.equals("/getToken")) {
                 String token = tuyaService.getToken();
                 SendMessage messageToExecute = new SendMessage(
                         chatId,
                         token
+                );
+                execute(messageToExecute);
+
+            } else if (userMessage.equals("/getVoltage")){
+                ResponseGetCurrentVoltageDto response  = tuyaService.getCurrentVoltage();
+                SendMessage messageToExecute = new SendMessage(
+                        chatId,
+                        response.getCurrentVoltage().toString()
                 );
                 execute(messageToExecute);
             }
