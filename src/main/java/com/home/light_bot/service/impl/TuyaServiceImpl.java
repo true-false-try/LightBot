@@ -1,5 +1,6 @@
 package com.home.light_bot.service.impl;
 
+import com.home.light_bot.config.vault.constant.TuyaConstant;
 import com.home.light_bot.dto.ResponseGetCurrentVoltageDto;
 import com.home.light_bot.dto.ResponseGetTokenDto;
 import com.home.light_bot.dto.ResponseTuyaContainerDto;
@@ -7,6 +8,7 @@ import com.home.light_bot.dto.TuyaDeviceStatusResponseDto;
 import com.home.light_bot.service.TuyaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -22,28 +24,31 @@ import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 
+import static com.home.light_bot.config.vault.constant.TuyaConstant.TUYA_HTTPS_TYPE;
+import static com.home.light_bot.config.vault.constant.TuyaConstant.TUYA_TOKEN_PATH;
+import static com.home.light_bot.config.vault.constant.TuyaConstant.TUYA_URL;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class TuyaServiceImpl implements TuyaService {
+
+    @Autowired
+    private final TuyaConstant tuyaConstant;
+
     @Value("${tuya.client.id}") private String clientId;
     @Value("${tuya.sign.method}") private String signMethod;
     @Value("${algoritm.hmac}") private String hmac;
     @Value("${tuya.client.secret}") private String clientSecret;
     @Value("${tuya.content_hash}") private String contentHash;
-    @Value("${tuya.device.id}") private String deviceId;
 
     private final RestTemplate restTemplate;
 
     @Override
     public String getToken() throws Exception {
-        String path = "/v1.0/token?grant_type=1";
         String t = String.valueOf(System.currentTimeMillis());
-        String method = "GET";
+        String signSource = createSignSource(null, t);
 
-        String stringToSign = method + "\n" + contentHash + "\n" + "\n" + path;
-
-        String signSource = clientId + t + stringToSign;
         String sign = calculateHMAC(signSource, clientSecret);
 
         HttpHeaders headers = new HttpHeaders();
@@ -55,7 +60,7 @@ public class TuyaServiceImpl implements TuyaService {
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
         ResponseEntity<ResponseTuyaContainerDto<ResponseGetTokenDto>> response = restTemplate.exchange(
-                "https://openapi.tuyaeu.com" + path,
+                TUYA_URL + TUYA_TOKEN_PATH,
                 HttpMethod.GET,
                 entity,
                 new ParameterizedTypeReference<>() {}
@@ -78,15 +83,9 @@ public class TuyaServiceImpl implements TuyaService {
     @Override
     public ResponseGetCurrentVoltageDto getCurrentVoltage() throws Exception {
         String accessToken = getToken();
-
-        String method = "GET";
-        String path = "/v1.0/devices/" + deviceId + "/status";
         String t = String.valueOf(System.currentTimeMillis());
 
-        String stringToSign = method + "\n" + contentHash + "\n" + "\n" + path;
-
-        String signSource = clientId + accessToken + t + stringToSign;
-
+        String signSource = createSignSource(accessToken, t);
         String sign = calculateHMAC(signSource, clientSecret);
 
         HttpHeaders headers = new HttpHeaders();
@@ -99,7 +98,7 @@ public class TuyaServiceImpl implements TuyaService {
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
         ResponseEntity<TuyaDeviceStatusResponseDto> responseTuya = restTemplate.exchange(
-                "https://openapi.tuyaeu.com" + path,
+                TUYA_URL + tuyaConstant.getTuyaDevicesPath(),
                 HttpMethod.GET,
                 entity,
                 TuyaDeviceStatusResponseDto.class
@@ -132,4 +131,16 @@ public class TuyaServiceImpl implements TuyaService {
     private Integer calculateVoltage(Integer tuyaVoltage) {
         return tuyaVoltage / 10;
     }
+
+    private String createSignSource(String accessToken, String currentTime) {
+        return (accessToken == null || accessToken.isEmpty()) ?
+                clientId + currentTime + createSign(contentHash, TUYA_TOKEN_PATH) :
+                clientId + accessToken + currentTime + createSign(contentHash, tuyaConstant.getTuyaDevicesPath());
+
+    }
+
+    private String createSign(String contentHash, String uri) {
+        return TUYA_HTTPS_TYPE + "\n" + contentHash + "\n" + "\n" + uri;
+    }
+
 }

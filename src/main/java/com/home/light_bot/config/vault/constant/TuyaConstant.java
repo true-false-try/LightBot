@@ -1,0 +1,17 @@
+package com.home.light_bot.config.vault.constant;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+@Component
+public class TuyaConstant {
+    @Value("${tuya.device.id}") private String deviceId;
+
+    public static final String TUYA_HTTPS_TYPE = "GET";
+    public static final String TUYA_URL = "https://openapi.tuyaeu.com";
+    public static final String TUYA_TOKEN_PATH = "/v1.0/token?grant_type=1";
+
+    public String getTuyaDevicesPath() {
+        return "/v1.0/devices/" + deviceId + "/status";
+    }
+}
