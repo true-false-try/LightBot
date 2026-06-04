@@ -1,30 +1,21 @@
 package com.home.light_bot.service.impl;
 
-import com.home.light_bot.config.vault.constant.TuyaConstant;
 import com.home.light_bot.dto.ResponseGetCurrentVoltageDto;
 import com.home.light_bot.dto.ResponseGetTokenDto;
 import com.home.light_bot.dto.ResponseTuyaContainerDto;
 import com.home.light_bot.dto.TuyaDeviceStatusResponseDto;
+import com.home.light_bot.properties.TuyaProperties;
 import com.home.light_bot.service.TuyaService;
+import com.home.light_bot.utils.TuyaSigner;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-
-import static com.home.light_bot.config.vault.constant.TuyaConstant.TUYA_HTTPS_TYPE;
 import static com.home.light_bot.config.vault.constant.TuyaConstant.TUYA_TOKEN_PATH;
 import static com.home.light_bot.config.vault.constant.TuyaConstant.TUYA_URL;
 
@@ -33,114 +24,63 @@ import static com.home.light_bot.config.vault.constant.TuyaConstant.TUYA_URL;
 @RequiredArgsConstructor
 public class TuyaServiceImpl implements TuyaService {
 
-    @Autowired
-    private final TuyaConstant tuyaConstant;
-
-    @Value("${tuya.client.id}") private String clientId;
-    @Value("${tuya.sign.method}") private String signMethod;
-    @Value("${algoritm.hmac}") private String hmac;
-    @Value("${tuya.client.secret}") private String clientSecret;
-    @Value("${tuya.content_hash}") private String contentHash;
-
     private final RestTemplate restTemplate;
+    private final TuyaSigner signer;
+    private final TuyaProperties props;
+
 
     @Override
-    public String getToken() throws Exception {
+    public String getToken() {
         String t = String.valueOf(System.currentTimeMillis());
-        String signSource = createSignSource(null, t);
+        String sign = signer.calculateSign(t, TUYA_TOKEN_PATH);
 
-        String sign = calculateHMAC(signSource, clientSecret);
+        HttpHeaders headers = buildHeaders(null, t, sign);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("client_id", clientId);
-        headers.add("sign_method", signMethod);
-        headers.add("t", t);
-        headers.add("sign", sign);
-
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-
-        ResponseEntity<ResponseTuyaContainerDto<ResponseGetTokenDto>> response = restTemplate.exchange(
+        var response = restTemplate.exchange(
                 TUYA_URL + TUYA_TOKEN_PATH,
                 HttpMethod.GET,
-                entity,
-                new ParameterizedTypeReference<>() {}
-        );
+                new HttpEntity<>(headers),
+                new ParameterizedTypeReference<ResponseTuyaContainerDto<ResponseGetTokenDto>>() {}
+        ).getBody();
 
-        ResponseTuyaContainerDto<ResponseGetTokenDto> responseBody = response.getBody();
-
-        if (responseBody != null && responseBody.success() && responseBody.result() != null) {
-
-            String token = responseBody.result().accessToken();
-            log.debug("Get token: {}", token);
-
-            return token;
-        } else {
-            String errorMsg = responseBody != null ? responseBody.msg() : "Empty response";
-            throw new RuntimeException("Exception with Tuya API: " + errorMsg);
+        if (response != null && response.success()) {
+            return response.result().accessToken();
         }
+        throw new RuntimeException("Tuya auth failed");
     }
 
     @Override
-    public ResponseGetCurrentVoltageDto getCurrentVoltage() throws Exception {
-        String accessToken = getToken();
+    public ResponseGetCurrentVoltageDto getCurrentVoltage() {
+        String token = getToken(); // need added cache in redis
         String t = String.valueOf(System.currentTimeMillis());
+        String path = props.getTuyaDevicesPath();
+        String sign = signer.calculateSign(token, t, path);
 
-        String signSource = createSignSource(accessToken, t);
-        String sign = calculateHMAC(signSource, clientSecret);
+        var response = restTemplate.exchange(
+                TUYA_URL + path,
+                HttpMethod.GET,
+                new HttpEntity<>(buildHeaders(token, t, sign)),
+                TuyaDeviceStatusResponseDto.class
+        ).getBody();
 
+        return parseVoltage(response);
+    }
+
+    private HttpHeaders buildHeaders(String token, String t, String sign) {
         HttpHeaders headers = new HttpHeaders();
-        headers.add("client_id", clientId);
-        headers.add("sign_method", signMethod);
-        headers.add("access_token", accessToken);
+        headers.add("client_id", props.getClientId());
+        headers.add("sign_method", props.getSignMethod());
         headers.add("t", t);
         headers.add("sign", sign);
+        if (token != null) headers.add("access_token", token);
+        return headers;
+    }
 
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-
-        ResponseEntity<TuyaDeviceStatusResponseDto> responseTuya = restTemplate.exchange(
-                TUYA_URL + tuyaConstant.getTuyaDevicesPath(),
-                HttpMethod.GET,
-                entity,
-                TuyaDeviceStatusResponseDto.class
-        );
-
-
-       TuyaDeviceStatusResponseDto tuyaContainerDto = responseTuya.getBody();
-
-       log.debug("CURL headers --> client_id: {}, access_token: {}, sign: {}, t: {}", clientId, accessToken, sign, t);
-
-       return  tuyaContainerDto.result().stream()
-                .filter(field -> "cur_voltage".equals(field.code()))
+    private ResponseGetCurrentVoltageDto parseVoltage(TuyaDeviceStatusResponseDto response) {
+        return response.result().stream()
+                .filter(f -> "cur_voltage".equals(f.code()))
                 .findFirst()
-                .map(field -> ResponseGetCurrentVoltageDto.builder().currentVoltage(
-                        calculateVoltage((Integer) field.value())
-                ).build())
-                .orElseGet(() -> ResponseGetCurrentVoltageDto.builder().currentVoltage(null).build());
+                .map(f -> new ResponseGetCurrentVoltageDto((Integer) f.value() / 10))
+                .orElse(new ResponseGetCurrentVoltageDto(null));
     }
-
-    private String calculateHMAC(String data, String key) throws NoSuchAlgorithmException, InvalidKeyException {
-        Mac sha256HMAC = Mac.getInstance(hmac);
-        SecretKeySpec secretKey = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), hmac);
-        sha256HMAC.init(secretKey);
-        byte[] hash = sha256HMAC.doFinal(data.getBytes(StandardCharsets.UTF_8));
-        StringBuilder result = new StringBuilder();
-        for (byte b : hash) { result.append(String.format("%02x", b)); }
-        return result.toString().toUpperCase();
-    }
-
-    private Integer calculateVoltage(Integer tuyaVoltage) {
-        return tuyaVoltage / 10;
-    }
-
-    private String createSignSource(String accessToken, String currentTime) {
-        return (accessToken == null || accessToken.isEmpty()) ?
-                clientId + currentTime + createSign(contentHash, TUYA_TOKEN_PATH) :
-                clientId + accessToken + currentTime + createSign(contentHash, tuyaConstant.getTuyaDevicesPath());
-
-    }
-
-    private String createSign(String contentHash, String uri) {
-        return TUYA_HTTPS_TYPE + "\n" + contentHash + "\n" + "\n" + uri;
-    }
-
 }
