@@ -28,7 +28,6 @@ public class TuyaServiceImpl implements TuyaService {
     private final TuyaSigner signer;
     private final TuyaProperties props;
 
-
     @Override
     public String getToken() {
         String t = String.valueOf(System.currentTimeMillis());
