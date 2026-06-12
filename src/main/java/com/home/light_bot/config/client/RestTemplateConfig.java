@@ -1,14 +1,21 @@
 package com.home.light_bot.config.client;
 
+import com.home.light_bot.config.logging.LoggingInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.BufferingClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 @Configuration
 public class RestTemplateConfig {
 
     @Bean
-    public RestTemplate restTemplate(){
-        return new RestTemplate();
+    public RestTemplate restTemplate() {
+        ClientHttpRequestFactory factory = new BufferingClientHttpRequestFactory(new SimpleClientHttpRequestFactory());
+        RestTemplate restTemplate = new RestTemplate(factory);
+        restTemplate.getInterceptors().add(new LoggingInterceptor());
+        return restTemplate;
     }
 }
