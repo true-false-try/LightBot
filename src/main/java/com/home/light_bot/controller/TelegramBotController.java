@@ -39,8 +39,9 @@ public class TelegramBotController extends TelegramLongPollingBot {
                 Message inMessage = update.getMessage();
                 String chatId = inMessage.getChatId().toString();
                 String userMessage = inMessage.getText();
+                String userName = inMessage.getFrom().getUserName();
 
-                log.info("Get command '{}' from client with chatId: {}", userMessage, chatId);
+                log.info("Get command: '{}' from client: '{}' with chatId: '{}'", userMessage, userName, chatId);
 
                 if (userMessage.equals("/getToken")) {
                     String token = tuyaAuthService.getToken();
