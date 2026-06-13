@@ -10,10 +10,8 @@ import com.home.light_bot.utils.TuyaSigner;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Objects;
@@ -35,29 +33,29 @@ public class TuyaApiServiceImpl implements TuyaApiService {
     @Override
     public ResponseGetCurrentVoltageDto getCurrentVoltage() throws Exception {
         log.info("Starting {}", Thread.currentThread().getStackTrace()[1].getMethodName());
-
-        String token = authService.getToken();
-        try {
-            return executeVoltageRequest(token);
-        } catch (HttpClientErrorException.Unauthorized ex) {
-            authService.evictTokenCache();
-            return executeVoltageRequest(token);
-        }
+        return executeVoltageRequest(authService.getToken());
     }
 
-    private ResponseGetCurrentVoltageDto executeVoltageRequest(String token) {
+    private ResponseGetCurrentVoltageDto executeVoltageRequest(String token) throws Exception {
         String t = String.valueOf(System.currentTimeMillis());
         String path = props.getTuyaDevicesPath();
         String sign = signer.calculateSign(token, t, path);
 
-        var response = restTemplate.exchange(
+        TuyaDeviceStatusResponseDto response = callTuyaDevice(path, token, t, sign);
+        if (!response.success()) {
+            authService.evictTokenCache();
+            return executeVoltageRequest(authService.getToken());
+        }
+        return parseVoltage(Objects.requireNonNull(response));
+    }
+
+    private  TuyaDeviceStatusResponseDto callTuyaDevice(String path, String token, String t, String sign) {
+        return restTemplate.exchange(
                 TUYA_URL + path,
                 HttpMethod.GET,
                 new HttpEntity<>(headersBuilder.build(token, t, sign)),
                 TuyaDeviceStatusResponseDto.class
         ).getBody();
-
-        return parseVoltage(Objects.requireNonNull(response));
     }
 
     private ResponseGetCurrentVoltageDto parseVoltage(TuyaDeviceStatusResponseDto response) {

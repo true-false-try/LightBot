@@ -56,8 +56,9 @@ public class TuyaAuthServiceImpl implements TuyaAuthService {
         }
         throw new RuntimeException("Tuya auth failed");
     }
+
     @Override
-    @CacheEvict(value = LIGHT_BOT, key = GET_TOKEN)
+    @CacheEvict(value = LIGHT_BOT, key = "'" + GET_TOKEN + "'")
     public void evictTokenCache() {
         log.warn("Remove token from cache");
     }
